@@ -41,32 +41,58 @@ def draw_text(text, font, text_col, x, y):
   screen.blit(img, (x, y))
 
 
-SkinSelect = False
 
-def skin_selector(cursor, char2number, SkinList):
-    character_selector = True
-    while character_selector == True:
+def skin_selector(current_skin_id, skin_list):
+
+    # Get the amount of skins in the list
+    menu_limit = len(skin_list)
+    
+    # Get a list of skin IDs
+    # Also but not required, get a list of the skin paths
+    skin_id_list, skin_dir_list = zip(*skin_list)
+    #    current_skin_index = [(index, skin_data) for index, skin_data in enumerate(skin_list) if skin_data[0] == current_skin_id][0]
+    
+    # From this list of skin IDs, get the index of the current skin
+    current_skin_index = skin_id_list.index(current_skin_id)
+    
+    # Get the current skin data from the skin list
+    current_skin = skin_list[current_skin_index]
+    
+    # Initialize the menu values
+    new_skin = current_skin
+    menu_option = current_skin_index
+    
+    # Flow control var
+    selecting = True
+    
+    while selecting:
         clock.tick(FPS)
         draw_bg()
         events = pygame.event.get()
-        key = pygame.key.get_pressed()
-
-        draw_text(f"Skin: {char2number}"  , score_font, BLUE , 60, 250)
+        
+        # Draw the menu      
+        draw_text(f"Current skin: {current_skin}"  , score_font, GREEN , 60, 250)
+        draw_text(f"Selecting skin: {new_skin}"  , score_font, BLUE , 60, 300)
         
 
-        if 'up' in get_event_keys(events) and SkinSelect == False:
-            char2number = math.ceil((char2number + 1) % SkinList) 
-            print(char2number)
-        if 'down' in get_event_keys(events) and SkinSelect == False:
-            char2number = math.ceil((char2number - 1) % SkinList)
-            print(char2number)
+        # Menu algorithm
+        if 'up' in get_event_keys(events):
+            menu_option = (menu_option + 1) % menu_limit
+        if 'down' in get_event_keys(events):
+            menu_option = (menu_option - 1) % menu_limit
         if '[1]' in get_event_keys(events):
-            cursor.execute(f"UPDATE user SET id_skin = {char2number} WHERE id = 1")
-            cursor.execute("SELECT id_skin FROM user WHERE id = 1")
-            hola = cursor.fetchone()
-            print(hola)
-            character_selector = False
+            selecting = False
+        
+        # Update the SELECTED skin from the memory list (just list)
+        new_skin = skin_list[menu_option]
+        
+        # Refresh the frame                   
         pygame.display.update()
+       
+       
+    # Once it is accepted the NEW SELECTED skin, just grab the ID and return it 
+    new_skin_id = new_skin[0]                      
+    return new_skin_id
 
 
 
@@ -97,7 +123,7 @@ def game_loop(cursor, skin):
     running = True
     while running:
         for event in pygame.event.get():
-            if event.type == QUIT:
+            if event.type == pygame.QUIT:
                 running = False
 
         # Update
@@ -126,6 +152,8 @@ def game_loop(cursor, skin):
 
         # Increase the score
         score += 1
+        
+    
 
 def main():
     # Connect to the SQLite database
@@ -135,21 +163,33 @@ def main():
     cursor = conn.cursor()
     init_db(conn)
 
-    # LIMIT skins
-    cursor.execute("SELECT count(id) from skins")
-    SkinList = cursor.fetchall()[0][0]
-    print(SkinList)
 
-    # SKIN selector
-    cursor.execute("SELECT id_skin FROM user LIMIT 1")
-    char2number = cursor.fetchone()[0]
-    skin_selector(cursor, char2number, SkinList)
+
+    # Pull all the data from the table SKINS, make an list in memory with it
+    cursor.execute("SELECT * from skins")
+    skin_list = cursor.fetchall()
     
+    # Chose on porpuse, the USER to play
+    user_id = 1
+    
+    
+    # Get the skin ID that user is using
+    cursor.execute(f"SELECT id_skin FROM user WHERE id = {user_id}")
+    
+    # ID de la skin usada actualmente
+    current_skin_id = cursor.fetchone()[0]
+    
+    # Call the selector, it has to return the chosen new skin ID
+    new_skin_id = skin_selector(current_skin_id, skin_list)
+    
+    # Update USER table
+    cursor.execute(f"UPDATE user SET id_skin = {new_skin_id} WHERE id = {user_id}")
+    conn.commit()
     
 
     # Select the skin
-    cursor.execute("SELECT skin_dir FROM skins INNER JOIN user ON skins.id = user.id_skin")
-    SKIN_DIR = cursor.fetchall()[0][0]
+    cursor.execute(f"SELECT skin_dir FROM skins INNER JOIN user ON skins.id = user.id_skin WHERE user.id = {user_id}")
+    SKIN_DIR = cursor.fetchone()[0]
 
     # Run the game loop
     score = game_loop(cursor, SKIN_DIR)
